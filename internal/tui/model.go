@@ -475,38 +475,62 @@ func (m Model) isTypingState() bool {
 }
 
 // handleDepositKeys handles the keys that act on the deposit panel —
-// arrow nav, enter-to-copy, q (fullscreen QR), g (image mode), c/C
+// arrow nav, enter-to-copy, q (fullscreen QR), i (image mode), c/C/y
 // (direct copy shortcuts). Runs before tab-specific dispatch so it
 // works in both stOrdered (Swap tab) and Track tab. Returns
 // handled=true when the keystroke was consumed.
 func (m Model) handleDepositKeys(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
-	var activeAddr string
+	var activeAddr, activeID string
 	if (m.tab == tabSwap || m.tab == tabGhost) && m.state == stOrdered && m.trade != nil {
 		activeAddr = m.trade.DepositAddress
+		activeID = tradeDisplayID(m.trade)
 	} else if m.tab == tabTrack && m.trackTrade != nil && !isTerminal(m.trackTrade.Status) {
 		activeAddr = m.trackTrade.DepositAddress
+		activeID = tradeDisplayID(m.trackTrade)
 	}
-	if activeAddr == "" {
+	if activeAddr == "" && activeID == "" {
 		return m, nil, false
 	}
 	switch msg.String() {
+	case "y":
+		if activeID == "" {
+			return m, nil, false
+		}
+		m.copyText(activeID)
+		m.copyToast = "📋 trade ID copied to clipboard"
+		return m, tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return clearToastMsg{} }), true
 	case "q":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		m.qrFullScreen = !m.qrFullScreen
 		return m, nil, true
 	case "i":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		m.qrImageMode = !m.qrImageMode
 		return m, nil, true
 	case "up", "k":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		if m.depositFocus > 0 {
 			m.depositFocus--
 		}
 		return m, nil, true
 	case "down", "j":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		if m.depositFocus < 1 {
 			m.depositFocus++
 		}
 		return m, nil, true
 	case "enter":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		var label string
 		if m.depositFocus == 0 {
 			label = "📋 address copied to clipboard"
@@ -517,10 +541,16 @@ func (m Model) handleDepositKeys(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		m.copyToast = label
 		return m, tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return clearToastMsg{} }), true
 	case "c":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		m.copyText(activeAddr)
 		m.copyToast = "📋 address copied to clipboard"
 		return m, tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return clearToastMsg{} }), true
 	case "C":
+		if activeAddr == "" {
+			return m, nil, false
+		}
 		m.copyText(qrBrowserURL(activeAddr))
 		m.copyToast = "📋 QR URL copied to clipboard"
 		return m, tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return clearToastMsg{} }), true
@@ -829,6 +859,16 @@ func isTerminal(status string) bool {
 	return false
 }
 
+func tradeDisplayID(t *api.Trade) string {
+	if t == nil {
+		return ""
+	}
+	if t.ID != "" {
+		return t.ID
+	}
+	return t.TradeID
+}
+
 // fmtAmt renders a crypto amount with magnitude-aware precision so the
 // route-card line stays on one row. Float64 round-trip precision (the
 // previous `-1` flag) emitted 17 digits for values like 0.03507851359904113,
@@ -1120,7 +1160,7 @@ func (m Model) renderOrdered() string {
 	addrLine := osc8(depositURI, styleOk.Render(t.DepositAddress))
 	addrCaret, qrCaret := caretFor(m.depositFocus, 0), caretFor(m.depositFocus, 1)
 	left := []string{
-		styleAccent.Render("Order ") + t.ID,
+		styleAccent.Render("Order ") + tradeDisplayID(t) + styleDim.Render("  (y copy trade ID)"),
 		styleAccent.Render("Status: ") + styleOk.Render(strings.ToUpper(t.Status)),
 		"",
 		styleDim.Render("Send"),
