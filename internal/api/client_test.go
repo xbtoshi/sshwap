@@ -41,6 +41,15 @@ func TestEstimateParse(t *testing.T) {
 		if r.URL.Query().Get("from") != "btc" || r.URL.Query().Get("to") != "usdt" {
 			t.Fatalf("missing query: %s", r.URL.RawQuery)
 		}
+		if got := r.URL.Query().Get("from_net"); got != "Mainnet" {
+			t.Fatalf("expected website-style from_net=Mainnet, got %q in %s", got, r.URL.RawQuery)
+		}
+		if got := r.URL.Query().Get("to_net"); got != "TRC20" {
+			t.Fatalf("expected website-style to_net=TRC20, got %q in %s", got, r.URL.RawQuery)
+		}
+		if got := r.URL.Query().Get("type"); got != "from" {
+			t.Fatalf("expected type=from, got %q in %s", got, r.URL.RawQuery)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"id":"q-1","rate":80000,"amount_from":0.01,"amount_to":800,
@@ -49,7 +58,7 @@ func TestEstimateParse(t *testing.T) {
 			"routes":[{"provider":"Houdini_ChangeNow","engine":"houdini","amount_to":800,"amount_from":0.01,"kyc":"B","log_policy":"B","eta":30,"fixed":false}]
 		}`))
 	}))
-	q, err := c.Estimate(context.Background(), "btc", "", "usdt", "TRC20", 0.01)
+	q, err := c.Estimate(context.Background(), "btc", "Mainnet", "usdt", "TRC20", 0.01)
 	if err != nil {
 		t.Fatalf("Estimate err: %v", err)
 	}
@@ -75,6 +84,70 @@ func TestCreateInjectsSource(t *testing.T) {
 	}
 	if tr.ID != "abc" || tr.DepositAddress == "" {
 		t.Fatalf("unexpected trade: %+v", tr)
+	}
+}
+
+func TestCreatePayloadIncludesQuoteRouteContext(t *testing.T) {
+	var got map[string]any
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/exchange/create" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"id":"abc","trade_id":"abc","status":"WAITING","engine":"pegasusswap","provider":"Pegasusswap","fromTicker":"USDC","fromNetwork":"Base","fromAmount":10,"toTicker":"QUBIC","toNetwork":"Mainnet","toAmount":23000000,"depositAddress":"0xabc","address_user":"QUBIC..."}`))
+	}))
+
+	_, err := c.Create(context.Background(), CreateReq{
+		TradeID:      "pegasusswap-quote-1",
+		Provider:     "Pegasusswap",
+		Engine:       "pegasusswap",
+		FromCurrency: "USDC",
+		FromNetwork:  "Base",
+		ToCurrency:   "QUBIC",
+		ToNetwork:    "Mainnet",
+		AmountFrom:   10,
+		AmountTo:     23000000,
+		AddressTo:    "QUBIC_DESTINATION",
+	})
+	if err != nil {
+		t.Fatalf("Create err: %v", err)
+	}
+
+	want := map[string]any{
+		"trade_id":      "pegasusswap-quote-1",
+		"provider":      "Pegasusswap",
+		"engine":        "pegasusswap",
+		"from_currency": "USDC",
+		"from_network":  "Base",
+		"to_currency":   "QUBIC",
+		"to_network":    "Mainnet",
+		"amount_from":   float64(10),
+		"amount_to":     float64(23000000),
+		"address_to":    "QUBIC_DESTINATION",
+		"source":        "cli",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("payload[%s] = %#v, want %#v; full payload=%#v", k, got[k], v, got)
+		}
+	}
+}
+
+func TestCreateRejectsMissingRequiredPayloadBeforePost(t *testing.T) {
+	called := false
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	_, err := c.Create(context.Background(), CreateReq{Provider: "Pegasusswap"})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if called {
+		t.Fatal("Create posted to API despite missing required fields")
 	}
 }
 

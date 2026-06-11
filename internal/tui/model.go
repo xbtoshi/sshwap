@@ -213,17 +213,24 @@ func (m Model) cmdCreate() tea.Cmd {
 
 	provider := m.quote.Provider
 	engine := m.quote.Engine
+	amountTo := m.quote.AmountTo
+	fixed := false
 	var hq any
 	if r := m.picks.get(m.routePick); r != nil {
 		provider = r.Provider
 		engine = r.Engine
+		amountTo = r.AmountTo
+		fixed = r.Fixed
 		hq = r.HoudiniQuote
 	} else if len(m.quote.Routes) > 0 {
 		provider = m.quote.Routes[0].Provider
 		engine = m.quote.Routes[0].Engine
+		amountTo = m.quote.Routes[0].AmountTo
+		fixed = m.quote.Routes[0].Fixed
 		hq = m.quote.Routes[0].HoudiniQuote
 	}
 	req := api.CreateReq{
+		TradeID:      m.quote.ID,
 		Provider:     provider,
 		Engine:       engine,
 		FromCurrency: from,
@@ -231,7 +238,9 @@ func (m Model) cmdCreate() tea.Cmd {
 		FromNetwork:  fromNet,
 		ToNetwork:    toNet,
 		AmountFrom:   amt,
+		AmountTo:     amountTo,
 		AddressTo:    addr,
+		FixedRate:    fixed,
 		AddressMemo:  memo,
 		HoudiniQuote: hq,
 	}
