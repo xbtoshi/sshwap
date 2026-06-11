@@ -684,7 +684,6 @@ func (m Model) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.assignAsset(strings.ToUpper(txt))
-		m.setPickerScratch("")
 		return m, nil
 	case "backspace":
 		s := m.pickerScratch()
