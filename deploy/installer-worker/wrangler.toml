@@ -1,0 +1,9 @@
+name = "kyc-cli-installer"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+workers_dev = false
+
+# cli.kyc.rip — installer alias. Serves /install.sh (proxied from the repo's
+# always-current GitHub raw) and 301s everything else to swap.kyc.rip.
+# Replaces the old nginx vhost that died with the decommissioned box.
+routes = [{ pattern = "cli.kyc.rip", custom_domain = true }]
