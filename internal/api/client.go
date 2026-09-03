@@ -54,16 +54,16 @@ type Currency struct {
 }
 
 type Route struct {
-	Provider        string  `json:"provider"`
-	Engine          string  `json:"engine"`
-	AmountTo        float64 `json:"amount_to"`
-	AmountFrom      float64 `json:"amount_from"`
-	KYC             string  `json:"kyc"`
-	LogPolicy       string  `json:"log_policy"`
-	ETA             int     `json:"eta"`
-	Fixed           bool    `json:"fixed"`
-	Spread          float64 `json:"spread,omitempty"`
-	HoudiniQuote    any     `json:"_houdiniQuote,omitempty"`
+	Provider     string  `json:"provider"`
+	Engine       string  `json:"engine"`
+	AmountTo     float64 `json:"amount_to"`
+	AmountFrom   float64 `json:"amount_from"`
+	KYC          string  `json:"kyc"`
+	LogPolicy    string  `json:"log_policy"`
+	ETA          int     `json:"eta"`
+	Fixed        bool    `json:"fixed"`
+	Spread       float64 `json:"spread,omitempty"`
+	HoudiniQuote any     `json:"_houdiniQuote,omitempty"`
 	// Bridge / Ghost-only metadata. Populated by /v2/exchange/bridge/estimate.
 	BridgeLabel     string `json:"bridgeLabel,omitempty"`
 	BridgeBadge     string `json:"bridgeBadge,omitempty"`
@@ -86,20 +86,21 @@ type Estimate struct {
 }
 
 type CreateReq struct {
-	Provider     string  `json:"provider"`
-	Engine       string  `json:"engine,omitempty"`
-	FromCurrency string  `json:"from_currency"`
-	ToCurrency   string  `json:"to_currency"`
-	FromNetwork  string  `json:"from_network,omitempty"`
-	ToNetwork    string  `json:"to_network,omitempty"`
-	AmountFrom   float64 `json:"amount_from,omitempty"`
-	AmountTo     float64 `json:"amount_to,omitempty"`
-	AddressTo    string  `json:"address_to"`
-	FixedRate    bool    `json:"fixed_rate,omitempty"`
-	HoudiniQuote any     `json:"_houdiniQuote,omitempty"`
-	AddressMemo   string `json:"address_memo,omitempty"`
-	RefundAddress string `json:"refund_address,omitempty"`
-	Source        string `json:"source,omitempty"`
+	TradeID       string  `json:"trade_id,omitempty"`
+	Provider      string  `json:"provider"`
+	Engine        string  `json:"engine,omitempty"`
+	FromCurrency  string  `json:"from_currency"`
+	ToCurrency    string  `json:"to_currency"`
+	FromNetwork   string  `json:"from_network,omitempty"`
+	ToNetwork     string  `json:"to_network,omitempty"`
+	AmountFrom    float64 `json:"amount_from,omitempty"`
+	AmountTo      float64 `json:"amount_to,omitempty"`
+	AddressTo     string  `json:"address_to"`
+	FixedRate     bool    `json:"fixed_rate,omitempty"`
+	HoudiniQuote  any     `json:"_houdiniQuote,omitempty"`
+	AddressMemo   string  `json:"address_memo,omitempty"`
+	RefundAddress string  `json:"refund_address,omitempty"`
+	Source        string  `json:"source,omitempty"`
 }
 
 type Trade struct {
@@ -172,12 +173,15 @@ func (c *Client) Estimate(ctx context.Context, from, fromNet, to, toNet string, 
 	q.Set("from", from)
 	q.Set("to", to)
 	if fromNet != "" {
+		q.Set("from_net", fromNet)
 		q.Set("network_from", fromNet)
 	}
 	if toNet != "" {
+		q.Set("to_net", toNet)
 		q.Set("network_to", toNet)
 	}
 	q.Set("amount", strconv.FormatFloat(amount, 'f', -1, 64))
+	q.Set("type", "from")
 	var out Estimate
 	if err := c.do(ctx, http.MethodGet, "/v2/exchange/estimate?"+q.Encode(), nil, &out); err != nil {
 		return nil, err
@@ -188,6 +192,9 @@ func (c *Client) Estimate(ctx context.Context, from, fromNet, to, toNet string, 
 func (c *Client) Create(ctx context.Context, req CreateReq) (*Trade, error) {
 	if req.Source == "" {
 		req.Source = "cli"
+	}
+	if err := validateCreateReq(req); err != nil {
+		return nil, err
 	}
 	var out Trade
 	if err := c.do(ctx, http.MethodPost, "/v2/exchange/create", req, &out); err != nil {
@@ -227,6 +234,9 @@ func (c *Client) EstimateBridge(ctx context.Context, from, fromNet, to, toNet st
 func (c *Client) CreateBridge(ctx context.Context, req CreateReq) (*Trade, error) {
 	if req.Source == "" {
 		req.Source = "cli"
+	}
+	if err := validateCreateReq(req); err != nil {
+		return nil, err
 	}
 	// Bridge create may return either a Trade object or [Trade, Trade...]
 	// depending on whether the route is multi-leg. Unmarshal into json.RawMessage
@@ -268,6 +278,26 @@ func (c *Client) Status(ctx context.Context, id string) (*Trade, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+func validateCreateReq(req CreateReq) error {
+	missing := []string{}
+	if strings.TrimSpace(req.Provider) == "" {
+		missing = append(missing, "provider")
+	}
+	if strings.TrimSpace(req.FromCurrency) == "" {
+		missing = append(missing, "from_currency")
+	}
+	if strings.TrimSpace(req.ToCurrency) == "" {
+		missing = append(missing, "to_currency")
+	}
+	if strings.TrimSpace(req.AddressTo) == "" {
+		missing = append(missing, "address_to")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required create params: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func truncate(s string, n int) string {
